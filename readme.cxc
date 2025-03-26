@@ -1,0 +1,668 @@
+# Sequence Analysis Pipeline
+
+## Setup
+
+To run this pipeline, you will need:
+
+1.  **Google Colab Environment:** The code is designed to be run in a Google Colab environment.
+2.  **Google Drive Access:** The pipeline requires access to your Google Drive to read input files and save results.
+3.  **Input FASTA File:** You need a FASTA file containing the nucleotide sequences you want to analyze. Place this file in the appropriate directory in your Google Drive, as specified in the code.
+
+## Usage
+
+1.  **Mount Google Drive:** Run the first cell to mount your Google Drive.
+2.  **Install Packages:** Run the cells that install the necessary Python packages (Biopython, etc.) and any system-level dependencies (MAFFT).
+3.  **Specify File Paths:** Ensure that the file paths in the code point to the correct locations of your input FASTA file and desired output directories in your Google Drive.
+4.  **Run the Cells:** Execute the remaining cells in the notebook sequentially to perform the sequence analysis.
+5.  **Access Results:** The results, including sequence statistics, graphs, alignments, and phylogenetic trees, will be saved in the specified output directories in your Google Drive.
+
+## Results
+
+The pipeline generates the following results:
+
+* **Sequence Statistics:** Sequence lengths, nucleotide content, and GC content are calculated and saved in text files and visualized in graphs.
+* **Protein Translations:** Nucleotide sequences are translated into protein sequences, and the protein sequences are saved in a FASTA file.
+* **Protein Analysis:** Protein sequence length and amino acid abundance are calculated.
+* **BLAST Preparation:** Nucleotide and protein sequences are saved as individual FASTA files for use in BLAST.
+* **Sequence Alignments:** Multiple sequence alignments are performed on both nucleotide and protein sequences.
+* **Similarity Matrix:** A similarity matrix is computed based on the protein sequence alignment.
+* **Consensus Sequence:** The consensus sequence of the nucleotide alignment is calculated.
+* **Consensus Level Plot:** A position-wise consensus level plot is generated for the nucleotide alignment.
+* **Phylogenetic Trees:** Phylogenetic trees are constructed based on both nucleotide and protein sequence alignments.
+
+This pipeline provides a comprehensive workflow for analyzing nucleotide sequences, from basic statistics to advanced phylogenetic analysis.
+
+1.  **Google Drive Integration (If using Google Colab):**
+    * The code is designed to work within a Google Colab environment. Ensure you have mounted your Google Drive. The default mount point in the code is `/content/drive`.
+2.  **Directory Structure:**
+    * The code assumes a specific directory structure within your Google Drive. You may need to adjust file paths in the code to match your setup.
+    * Example directory structure:
+        ```
+        MyDrive/
+        └── assignment_1_RodriguezGabriela/
+            ├── Data/
+            │   ├── sequences_pipline_032125.fna
+            │   └── ... (other input files)
+            └── results/
+                └── ... (output directories and files)
+
+## Pipeline Structure
+
+The pipeline is organized into several sections, each performing a specific set of tasks:
+
+1.  **Connect to Google Drive:**
+    * Purpose: This section mounts Google Drive to the Colab environment, allowing access to files stored in the user's drive.
+    * Code:
+        ```python
+        from google.colab import drive
+        drive.mount('/content/drive')
+        import os
+        os.chdir("/content/drive/MyDrive/assignment_1_RodriguezGabriela")
+        ```
+    * Results: Google Drive is mounted, and the working directory is set to the specified path.
+
+2.  **Set Up Packages, Import, and Load Unknown Sequences | Parsing Data:**
+    * Purpose: This section installs necessary Python packages (Biopython), imports required modules, and loads nucleotide sequences from a FASTA file. It also includes checks and verification of the loaded sequences.
+    * Code:
+        ```python
+        !pip install biopython
+        from Bio import SeqIO
+        from google.colab import files
+
+        uploaded = files.upload()
+        filename = list(uploaded.keys())[0]
+        sequences = list(SeqIO.parse(filename, "fasta"))
+        print(f"You successfully loaded {len(sequences)} sequences.")
+
+        from Bio import SeqIO
+        sequences = list(SeqIO.parse("/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/sequences_pipline_032125.fna", "fasta"))
+        print(f"You successfully loaded {len(sequences)} sequences.")
+
+        # Check and double check
+
+        from google.colab import drive
+        import os
+        from Bio import SeqIO
+
+        # Mount Google Drive
+        drive.mount('/content/drive')
+
+        # Navigate to the directory containing the FASTA file
+        os.chdir("/content/drive/MyDrive/assignment_1_RodriguezGabriela")
+
+        # Load sequences from the FASTA file
+        sequences = list(SeqIO.parse("/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/sequences_pipline_032125.fna", "fasta"))
+        print(f"You successfully loaded {len(sequences)} sequences.")
+
+        # Explore and verify the loaded sequences
+        for i in range(min(10, len(sequences))):  # Print the first 10 sequences or fewer if there are less
+            seq_record = sequences[i]
+            print(f"Sequence ID: {seq_record.id}")
+            print(f"Sequence Length: {len(seq_record.seq)}")
+            print(f"Sequence Snippet: {seq_record.seq[:50]}...")  # Print the first 50 characters
+            print("-" * 20)
+
+        # Create the 'results' folder if it doesn't exist
+        results_folder = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/results"
+        os.makedirs(results_folder, exist_ok=True)
+
+        # Define the output text file path
+        text_file_path = os.path.join(results_folder, "Colab_Import_Print_Test.txt")
+
+        # Open the text file for writing
+        with open(text_file_path, 'w') as textfile:
+            # Write header
+            textfile.write("Sequence ID\tSequence Length\tSequence Snippet\n")
+
+            # Write data rows
+            for i in range(len(sequences)):  # Iterate through all sequences
+                seq_record = sequences[i]
+                textfile.write(f"{seq_record.id}\t{len(seq_record.seq)}\t{str(seq_record.seq[:50])}\n")
+
+        print(f"Results saved to: {text_file_path}")
+        ```
+    * Results: The Biopython package is installed. Sequences are loaded from the specified FASTA file. The first 10 sequences' IDs, lengths, and snippets are printed to the console. A text file ("Colab\_Import\_Print\_Test.txt") is created in the "results" folder, containing the sequence IDs, lengths, and snippets.
+
+3.  **Analyze Nucleotide Sequences | Analyze Strings:**
+    * Purpose: This section defines a `Sequence` class and functions to extract sequence information from a FASTA file, calculate sequence lengths, and visualize the lengths using a bar graph. It also calculates and visualizes the nucleotide content (A, G, C, T) of the sequences.
+    * Code:
+        ```python
+        import os
+        import matplotlib.pyplot as plt
+
+        class Sequence:
+            def __init__(self, identifier, sequence):
+                self.identifier = identifier
+                self.sequence = sequence
+
+        def extract_sequence(file_path):
+            # ... (Code for extracting sequences) ...
+
+        # --- Load sequences from file ---
+        file_path = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/sequences_pipline_032125.fna"
+        extracted_sequences = extract_sequence(file_path)
+
+        sequence_lengths =
+        identifiers =
+
+        if extracted_sequences:
+            for seq_obj in extracted_sequences:
+                sequence_length = len(seq_obj.sequence)
+                sequence_lengths.append(sequence_length)
+                identifiers.append(seq_obj.identifier)
+                print(f"Sequence Identifier: {seq_obj.identifier}, Length: {sequence_length}")
+
+            # --- Create the output folder ---
+            output_folder = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/results/Nucleotide_Seq_Lengths"
+            os.makedirs(output_folder, exist_ok=True)
+
+            # --- Create the bar graph ---
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.bar(identifiers, sequence_lengths, color='skyblue')
+            ax.set_xlabel("Sequence Identifier")
+            ax.set_ylabel("Sequence Length")
+            ax.set_title("Sequence Lengths of Extracted Sequences")
+            plt.xticks(rotation=45, ha="right")
+            fig.tight_layout()
+
+            # --- Save the graph as a PNG image BEFORE showing it ---
+            graph_path = os.path.join(output_folder, "sequence_lengths.png")
+            fig.savefig(graph_path)
+
+            # --- Show the graph ---
+            plt.show()
+
+            # --- Save the sequence lengths to a text file ---
+            text_file_path = os.path.join(output_folder, "sequence_lengths.txt")
+            with open(text_file_path, 'w') as textfile:
+                textfile.write("Sequence Identifier\tSequence Length\n")
+                for identifier, length in zip(identifiers, sequence_lengths):
+                    textfile.write(f"{identifier}\t{length}\n")
+
+            print(f"Results saved to: {output_folder}")
+
+        else:
+            print("No sequences found. Please check your input file.")
+
+        # "A", "G", "C", and "T" Content
+
+        import os
+        import matplotlib.pyplot as plt
+
+        def count_nucleotides(sequence):
+            # ... (Code for counting nucleotides) ...
+
+        file_path = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/sequences_pipline_032125.fna"
+        extracted_sequences = extract_sequence(file_path)
+
+        if extracted_sequences:
+            for seq_obj in extracted_sequences:
+                counts = count_nucleotides(seq_obj.sequence)
+                print(f"Sequence Identifier: {seq_obj.identifier}")
+                print(f"A: {counts['A']}, G: {counts['G']}, C: {counts['C']}, T: {counts['T']}")
+                print("-" * 20)
+
+                file_path = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/sequences_pipline_032125.fna"
+        extracted_sequences = extract_sequence(file_path)
+
+        # Create the output folder if it doesn't exist
+        output_folder = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/results/AGCT_Content"
+        os.makedirs(output_folder, exist_ok=True)
+
+        if extracted_sequences:
+            for seq_obj in extracted_sequences:
+                counts = count_nucleotides(seq_obj.sequence)
+
+                # Create bar graph
+                nucleotides = list(counts.keys())
+                frequencies = list(counts.values())
+
+                plt.figure(figsize=(8, 6))
+                plt.bar(nucleotides, frequencies, color=['red', 'green', 'blue', 'yellow'])
+                plt.title(f"Nucleotide Frequencies for {seq_obj.identifier}")
+                plt.xlabel("Nucleotide")
+                plt.ylabel("Frequency")
+
+                # Save the graph as a PNG image
+                graph_path = os.path.join(output_folder, f"{seq_obj.identifier}_nucleotide_frequencies.png")
+                plt.savefig(graph_path)
+
+                # Show the graph
+                plt.show()
+
+                # Save results to text file
+                text_file_path = os.path.join(output_folder, f"{seq_obj.identifier}_nucleotide_counts.txt")
+                with open(text_file_path, 'w') as textfile:
+                    textfile.write(f"Sequence Identifier: {seq_obj.identifier}\n")
+                    for nucleotide, frequency in counts.items():
+                        textfile.write(f"{nucleotide}: {frequency}\n")
+
+            print(f"Results saved to: {output_folder}")
+
+        else:
+          print("No sequences found. Please check your input file.")
+        ```
+    * Results: Sequence lengths are calculated and visualized in a bar graph ("sequence\_lengths.png") in the "results/Nucleotide\_Seq\_Lengths" folder. The lengths are also saved to a text file ("sequence\_lengths.txt") in the same folder. Nucleotide content (A, G, C, T) is calculated for each sequence, and bar graphs visualizing the frequencies are generated and saved as PNG images in the "results/AGCT\_Content" folder, along with corresponding text files containing the counts.
+
+4.  **Analyze GC Content:**
+    * Purpose: This section calculates the GC content of each sequence and presents the results in both text and a graph.
+    * Code:
+        ```python
+        def gc_content(sequence):
+            # ... (Code for calculating GC content) ...
+
+        file_path = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/sequences_pipline_032125.fna"
+        extracted_sequences = extract_sequence(file_path)
+
+        gc_contents =
+        identifiers =
+
+        if extracted_sequences:
+            for seq_obj in extracted_sequences:
+                gc = gc_content(seq_obj.sequence)
+                gc_contents.append(gc)
+                identifiers.append(seq_obj.identifier)
+                print(f"Sequence Identifier: {seq_obj.identifier}, GC Content: {gc:.2f}%")
+
+            # Create the output folder if it doesn't exist
+            output_folder = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/results/GC_Content"
+            os.makedirs(output_folder, exist_ok=True)
+
+            # Save results to a text file
+            text_file_path = os.path.join(output_folder, "gc_content_results.txt")
+            with open(text_file_path, 'w') as textfile:
+                textfile.write("Sequence Identifier\tGC Content\n")
+                for identifier, gc in zip(identifiers, gc_contents):
+                    textfile.write(f"{identifier}\t{gc:.2f}\n")
+            print(f"Results saved to: {text_file_path}")
+
+            # Plotting and saving the graph
+            plt.figure(figsize=(10, 6))
+            plt.bar(identifiers, gc_contents, color='skyblue')
+            plt.xlabel("Sequence Identifier")
+            plt.ylabel("GC Content (%)")
+            plt.title("GC Content of Extracted Sequences")
+            plt.xticks(rotation=45, ha="right")
+            plt.tight_layout()
+
+            # Save the graph as PNG
+            graph_path = os.path.join(output_folder, "gc_content_graph.png")
+            plt.savefig(graph_path)
+            plt.show()
+        ```
+    * Results: GC content is calculated for each sequence, printed to the console, saved to a text file ("gc\_content\_results.txt") in the "results/GC\_Content" folder, and visualized in a bar graph ("gc\_content\_graph.png") in the same folder.
+
+5.  **Translate Nucleotide Sequence to Protein Sequence:**
+    * Purpose: This section translates nucleotide sequences into their corresponding protein sequences and saves the protein sequences to a FASTA file. It also analyzes the protein sequences, calculating length and amino acid abundance.
+    * Code:
+        ```python
+        # Translate
+
+        import matplotlib.pyplot as plt
+        import pandas as pd
+
+        def translate_dna(dna_sequence):
+            # ... (Code for translating DNA to protein) ...
+
+        # ... (Your existing code for extract_sequence function and file path) ...
+
+        file_path = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/sequences_pipline_032125.fna"
+        extracted_sequences = extract_sequence(file_path)
+
+        protein_data =
+        if extracted_sequences:
+            # Iterate through the list of Sequence objects
+            for seq_obj in extracted_sequences:
+                protein = translate_dna(seq_obj.sequence) # Call translate_dna with the sequence
+                print(f"Sequence Identifier: {seq_obj.identifier}")
+                print(f"Protein Sequence: {protein}")
+                protein_data.append([seq_obj.identifier, protein]) # Use seq_obj.identifier
+                print("-" * 20)
+
+        df = pd.DataFrame(protein_data, columns=["Identifier", "Protein Sequence"])
+
+        # Save protein sequences to Google Drive
+        # Changed save_path to a file path within the 'Data' directory
+        save_path = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/protein_sequences.fasta"
+
+        with open(save_path, "w") as f:
+            for index, row in df.iterrows():  # Iterate through DataFrame rows
+                f.write(f">{row['Identifier']}\n")  # Write header
+                f.write(f"{row['Protein Sequence']}\n")  # Write sequence
+
+        print(f"Protein sequences saved to: {save_path}")
+
+        # Protein Sequence Analysis
+        def analyze_protein_sequences(protein_sequences_file):
+          # ... (Code for analyzing protein sequences) ...
+
+        protein_sequences_file = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/protein_sequences.fasta"
+
+        analyze_protein_sequences(protein_sequences_file)
+        ```
+    * Results: Nucleotide sequences are translated into protein sequences. The protein sequences are saved to a FASTA file ("protein\_sequences.fasta") in the "Data" directory. Protein sequence analysis results, including sequence length and amino acid abundance, are saved to a text file ("Protien\_Seq\_Analysis.txt") in the "results" directory.
+
+6.  **Prepare Code for BLAST:**
+    * Purpose: This section prepares the nucleotide and protein sequences for use in BLAST by saving each sequence into individual FASTA files.
+    * Code:
+        ```python
+        # Chuck it Proteins (a. separate everything to make it easier for me to work with latter)
+
+        !pip install biopython  # Install the Biopython library
+
+        from google.colab import drive
+        import os
+        from Bio import SeqIO
+        from Bio.Seq import Seq
+        from google.colab import files
+        import matplotlib.pyplot as plt
+        import pandas as pd
+
+        class Sequence:
+            # ... (Sequence class definition) ...
+
+        def extract_sequence(file_path):
+            # ... (Code for extracting sequences) ...
+
+        def translate_dna(dna_sequence):
+            # ... (Code for translating DNA to protein) ...
+
+        # Mount Google Drive and change directory
+        drive.mount('/content/drive')
+        os.chdir("/content/drive/MyDrive/assignment_1_RodriguezGabriela")
+
+        # File path to nucleotide sequences
+        file_path = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/sequences_pipline_032125.fna"
+        extracted_sequences = extract_sequence(file_path)
+
+        if extracted_sequences:
+            # Create the "Protein_Blast_Singles" directory if it doesn't exist
+            # FIX: Changed output_dir to be inside the 'Data' directory
+            output_dir = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/Protein_Blast_Singles"
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            for i, seq_obj in enumerate(extracted_sequences):
+                protein = translate_dna(seq_obj.sequence)
+                filename = os.path.join(output_dir, f"Protein_Seq_{i+1}.fasta")
+
+                if protein:
+                    with open(filename, "w") as f:
+                        f.write(f">{seq_obj.identifier}\n")
+                        f.write(f"{protein}\n")
+                    print(f"Protein sequence {i+1} saved to: {filename}")
+                else:
+                    print(f"Warning: No protein sequence generated for {seq_obj.identifier}")
+        else:
+            print("No sequences extracted from file.")
+
+        # Chuck it Nucleotides (a. separate everything to make it easier for me to work with latter)
+
+        file_path = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/sequences_pipline_032125.fna"
+        extracted_sequences = extract_sequence(file_path)
+
+        # Create the "Nucleotide_Blast_Singles" folder if it doesn't exist
+        output_folder = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/Nucleotide_Blast_Singles"
+        os.makedirs(output_folder, exist_ok=True)
+
+        if extracted_sequences:
+            for i, seq_obj in enumerate(extracted_sequences):
+                # Create a filename for each nucleotide sequence
+                filename = os.path.join(output_folder, f"Nucleotide_Seq_{i + 1}.fasta")
+
+                # Write the sequence to a file
+                with open(filename, 'w') as f:
+                    f.write(f">{seq_obj.identifier}\n")
+                    f.write(f"{seq_obj.sequence}\n")
+
+        print("Nucleotide sequences have been saved as individual FASTA files in the 'Nucleotide_Blast_Singles' folder.")
+        ```
+    * Results: Each protein sequence is saved as an individual FASTA file in the "Data/Protein\_Blast\_Singles" folder. Each nucleotide sequence is saved as an individual FASTA file in the "Data/Nucleotide\_Blast\_Singles" folder. This facilitates the use of individual sequences in BLAST searches.
+
+7.  **Perform Sequence Alignment:**
+    * Purpose: This section performs multiple sequence alignment on both nucleotide and protein sequences using MAFFT. It also computes a similarity matrix based on the protein alignment.
+    * Code:
+        ```python
+        # prompt: Install pandas biopython
+
+        !pip install biopython
+
+        !apt-get update
+        !apt-get install mafft
+
+        # Generate Alignment
+
+        !pip install biopython
+
+        !apt-get update
+        !apt-get install mafft
+
+        #  Install MAFFT
+        !apt-get install -y mafft
+
+        # Import libraries
+        import os
+        from Bio import SeqIO, AlignIO
+        from Bio.Align.Applications import MafftCommandline
+        from Bio.Align import MultipleSeqAlignment
+        import pandas as pd
+
+        # Create output directories (**MODIFIED**)
+        output_dir = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/results/alignments"
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Define file paths (**MODIFIED**)
+        nuc_input = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/sequences_pipline_032125.fna"
+        prot_input = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/Data/protein_sequences.fasta"
+
+        nuc_output = os.path.join(output_dir, "sequence_alignments_nucleotide.fna")
+        prot_output = os.path.join(output_dir, "sequence_alignments_proteins.faa")
+        similarity_output = os.path.join(output_dir, "sequence_similarities.csv")
+
+        # Align nucleotide sequences using MAFFT
+        nuc_aln_cline = MafftCommandline(input=nuc_input)
+        stdout_nuc, _ = nuc_aln_cline()
+        with open(nuc_output, "w") as handle:
+            handle.write(stdout_nuc)
+
+        # Align protein sequences using MAFFT
+        prot_aln_cline = MafftCommandline(input=prot_input)
+        stdout_prot, _ = prot_aln_cline()
+        with open(prot_output, "w") as handle:
+            handle.write(stdout_prot)
+
+        # Function to calculate percent identity matrix
+        def compute_similarity_matrix(alignment_file, file_format="fasta"):
+            # ... (Code for computing similarity matrix) ...
+
+        # Compute and save similarity matrix (based on protein alignment here)
+        similarity_matrix = compute_similarity_matrix(prot_output, file_format="fasta")
+        similarity_matrix.to_csv(similarity_output)
+
+        print("All steps completed. Alignments and similarity matrix saved.")
+        ```
+    * Results: Nucleotide sequences are aligned using MAFFT, and the alignment is saved to "results/alignments/sequence\_alignments\_nucleotide.fna". Protein sequences are aligned using MAFFT, and the alignment is saved to "results/alignments/sequence\_alignments\_proteins.faa". A similarity matrix, representing the percent identity between protein sequences, is computed and saved to "results/alignments/sequence\_similarities.csv".
+
+8.  **Analyze Alignment:**
+    * Purpose: This section analyzes the nucleotide sequence alignment by calculating the consensus sequence and generating a position-wise consensus level plot.
+    * Code:
+        ```python
+        from Bio import AlignIO
+        from Bio.Align import AlignInfo
+        import matplotlib.pyplot as plt
+        import os
+
+        # ... (Your existing code) ...
+
+        # Create the output folder if it doesn't exist
+        output_folder = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/results/Consensus"
+        os.makedirs(output_folder, exist_ok=True)
+
+        # Load the alignment
+        alignment = AlignIO.read(nuc_output, "fasta")
+
+        # Calculate the consensus sequence
+        summary_align = AlignInfo.SummaryInfo(alignment)
+        consensus = summary_align.dumb_consensus(threshold=0.5)
+
+        # Save the consensus sequence
+        with open(os.path.join(output_folder, "consensus_sequence.txt"), "w") as f:
+            f.write(str(consensus))
+
+        # Create a position-wise consensus level plot
+        # For example, plot the percentage of sequences that have each nucleotide at each position.
+        position_consensus =
+        for i in range(alignment.get_alignment_length()):
+            counts = summary_align.pos_specific_score_matrix()[i]
+            max_count = max(counts.values()) if counts else 0
+            consensus_level = (max_count / len(alignment)) * 100
+            position_consensus.append(consensus_level)
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(position_consensus)
+        plt.xlabel("Alignment Position")
+        plt.ylabel("Consensus Level (%)")
+        plt.title("Consensus Level Across Alignment")
+        plt.savefig(os.path.join(output_folder, "consensus_level_graph.png"))
+        plt.show()
+
+        print("Consensus sequence and consensus level graph saved to:", output_folder)
+        ```
+    * Results: The consensus sequence of the nucleotide alignment is calculated and saved to "results/Consensus/consensus\_sequence.txt". A position-wise consensus level plot is generated and saved as "results/Consensus/consensus\_level\_graph.png". The plot visualizes the percentage of sequences that agree with the consensus nucleotide at each position.
+
+9.  **Make Phylogenetic Trees:**
+    * Purpose: This section constructs phylogenetic trees based on both nucleotide and protein sequence alignments using the Neighbor-Joining method. The trees are saved in Newick format and as PNG images.
+    * Code:
+        ```python
+        # Generate Tree
+
+        # Install dependencies
+        !apt-get install -y mafft
+        !pip install biopython matplotlib
+
+        # Imports
+        import os
+        from Bio import AlignIO, Phylo
+        from Bio.Phylo.TreeConstruction import DistanceCalculator, DistanceTreeConstructor
+        import matplotlib.pyplot as plt
+
+        # Define paths (MODIFIED)
+        output_dir = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/results/phylogenetic_tree"
+        os.makedirs(output_dir, exist_ok=True)
+
+        nuc_aln_path = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/results/alignments/sequence_alignments_nucleotide.fna"
+        prot_aln_path = "/content/drive/MyDrive/assignment_1_RodriguezGabriela/results/alignments/sequence_alignments_proteins.faa"
+
+        nuc_tree_nwk = os.path.join(output_dir, "nucleotide_tree.nwk")
+        prot_tree_nwk = os.path.join(output_dir, "protein_tree.nwk")
+
+        nuc_tree_png = os.path.join(output_dir, "nucleotide_tree.png")
+        prot_tree_png = os.path.join(output_dir, "protein_tree.png")
+
+        # Function to build and save phylogenetic tree
+        def build_and_save_tree(alignment_path, tree_nwk_path, tree_img_path, datatype="protein"):
+            # ... (Code for building and saving phylogenetic tree) ...
+
+        # Build trees for both alignments
+        build_and_save_tree(nuc_aln_path, nuc_tree_nwk, nuc_tree_png, datatype="nucleotide")
+        build_and_save_tree(prot_aln_path, prot_tree_nwk, prot_tree_png, datatype="protein")
+        ```
+    * Results: Phylogenetic trees are constructed based on the nucleotide and protein alignments. The nucleotide tree is saved as "results/phylogenetic\_tree/nucleotide\_tree.nwk" (Newick format) and "results/phylogenetic\_tree/nucleotide\_tree.png" (PNG image). The protein tree is saved as "results/phylogenetic\_tree/protein\_tree.nwk" (Newick format) and "results/phylogenetic\_tree/protein\_tree.png" (PNG image).
+
+10. Chimera X 
+
+#Pairwise Protein Structure Alignment using ChimeraX
+#Structural Comparison of Predicted Protein Models
+
+This project performs pairwise structural alignments of predicted protein models using ChimeraX. The goal is to compare secondary and tertiary structure similarity across six protein structure predictions using the matchmaker tool in ChimeraX.
+
+
+1. Launch ChimeraX.
+2. Open the `align_and_save.cxc` script via:
+   File > Open > [navigate to align_and_save.cxc]
+3. The script will:
+   - Load a pair of predicted protein structures.
+   - Perform a structural alignment using `matchmaker`.
+   - Save the aligned structures as `.cif` files.
+   - Capture and save a `.png` snapshot of the alignment.
+   - Repeat for each pair.
+
+#Script Description (align_and_save.cxc)
+
+Each section of the script performs the following:
+- `open`: Load the reference and target models.
+- `matchmaker`: Align the target to the reference based on sequence and structure.
+- `save`: Export the aligned structure as a new `.cif` file.
+- `view` and `save image`: Set the scene and capture a visual of the alignment.
+- `close`: Clean up before the next pair is loaded.
+
+#Example Code Snippet:
+
+open "C:\Users\gabri\Desktop\assignment_1_RodriguezGabriela\Results\predicted_structures_visualizations/fold_pro_1/fold_pro_1_model_0.cif"
+rename #1 fold_pro_1
+open "C:\Users\gabri\Desktop\assignment_1_RodriguezGabriela\Results\predicted_structures_visualizations/fold_pro_2/fold_pro_2_model_0.cif"
+rename #2 fold_pro_2
+matchmaker #2 to #1
+cartoon
+color #1 skyblue
+color #2 orange
+save "C:\Users\gabri\Desktop\assignment_1_RodriguezGabriela\Results\pair_homology\fold_pro_1_vs_fold_pro_2_alignment.png" supersample 3
+save "C:\Users\gabri\Desktop\assignment_1_RodriguezGabriela\Results\pair_homology\fold_pro_1_vs_fold_pro_2_fold_pro_1_aligned.pdb" format pdb models #1
+save "C:\Users\gabri\Desktop\assignment_1_RodriguezGabriela\Results\pair_homology\fold_pro_1_vs_fold_pro_2_fold_pro_2_aligned.pdb" format pdb models #2
+close all
+
+#Customization
+
+- You can modify the file paths and model names directly in the script for different comparisons.
+- Add more pairs by copying and editing the code blocks accordingly.
+
+#Output
+
+- Aligned structure files: `.cif` format
+- Alignment images: `.png` format
+All output files are saved in the `alignments/` folder.
+
+#Future Directions
+
+- Automate RMSD or alignment score extraction for quantitative comparisons.
+- Integrate Foldseek results.
+- Expand to multi-chain or domain-specific alignments.
+
+# Comparison of folded protein from sequence with highest foldseek match
+
+Steps Performed for Each Pair:
+
+1. Load Structures:
+   - The `.cif` files of both the predicted structure (`Fold_Pro_X`) and its corresponding match (`Fold_Pro_X_Match`) are opened from the local desktop path.
+
+2. Rename Models:
+   - Loaded structures are renamed to more readable model names (`fold_pro_X` and `fold_pro_X_match`).
+
+3. Structure Alignment:
+   - The `matchmaker` command aligns the match structure (`#2`) to the predicted model (`#1`).
+
+4. Visualization Setup:
+   - Both structures are displayed in cartoon format for clarity.
+   - `fold_pro_X` (model #1) is colored skyblue.
+   - `fold_pro_X_match` (model #2) is colored orange.
+   - The scene is auto-oriented using the `view orient` command.
+
+5. Export Outputs:
+   - A PNG image of the aligned structures is saved with the format:
+     fold_pro_X_vs_fold_pro_X_match_alignment.png
+   - Both aligned structures are saved individually in PDB format as:
+     - fold_pro_X_aligned.pdb (model #1)
+     - fold_pro_X_match_aligned.pdb (model #2)
+
+6. Cleanup:
+   - All models are closed before moving on to the next pair to ensure a clean workspace.
+
+Output Directory:
+All alignment images and PDB files are saved in:
+C:\Users\gabri\Desktop\assignment_1_RodriguezGabriela\Results\structural_homology
+
+Example Output Files:
+- fold_pro_1_vs_fold_pro_1_match_alignment.png
+- fold_pro_1_vs_fold_pro_1_match_fold_pro_1_aligned.pdb
+- fold_pro_1_vs_fold_pro_1_match_fold_pro_1_match_aligned.pdb
+(… and similarly for fold_pro_2 to fold_pro_6)
